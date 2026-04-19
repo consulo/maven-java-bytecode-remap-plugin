@@ -97,27 +97,7 @@ public class MappingConfig {
                     m.returnType = method.getAttributeValue("returnType").replace('.', '/');
                     m.params = method.getAttributeValue("params");
 
-                    // Parse bytecode instructions
-                    for (Element insn : method.getChildren()) {
-                        String tag = insn.getName();
-                        switch (tag) {
-                            case "getstatic" -> m.instructions.add(new Instruction("getstatic",
-                                insn.getAttributeValue("owner").replace('.', '/'),
-                                insn.getAttributeValue("name"),
-                                insn.getAttributeValue("type").replace('.', '/')));
-                            case "areturn" -> m.instructions.add(new Instruction("areturn"));
-                            case "return" -> m.instructions.add(new Instruction("return"));
-                            case "aconst_null" -> m.instructions.add(new Instruction("aconst_null"));
-                            case "checkcast" -> m.instructions.add(new Instruction("checkcast",
-                                insn.getAttributeValue("type").replace('.', '/')));
-                            case "invokevirtual", "invokestatic", "invokeinterface" -> m.instructions.add(new Instruction(tag,
-                                insn.getAttributeValue("owner").replace('.', '/'),
-                                insn.getAttributeValue("name"),
-                                insn.getAttributeValue("desc")));
-                            case "aload" -> m.instructions.add(new Instruction("aload",
-                                insn.getAttributeValue("index")));
-                        }
-                    }
+                    parseInstructions(method, m.instructions);
 
                     mod.methods.add(m);
                 }
@@ -151,6 +131,13 @@ public class MappingConfig {
                         int index = Integer.parseInt(ap.getAttributeValue("index"));
                         String type = ap.getAttributeValue("type").replace('.', '/');
                         o.addParams.put(index, type);
+                    }
+
+                    // <body>...</body> — replace the method body with the given instructions
+                    Element body = override.getChild("body");
+                    if (body != null) {
+                        o.bodyInstructions = new ArrayList<>();
+                        parseInstructions(body, o.bodyInstructions);
                     }
 
                     mod.methodOverrides.add(o);
@@ -278,6 +265,45 @@ public class MappingConfig {
         return methodRenames.getOrDefault(key, name);
     }
 
+    /**
+     * Parse bytecode instructions from XML children of the given element.
+     * Shared by &lt;addMethod&gt; and &lt;body&gt; (inside &lt;overrideMethod&gt;).
+     *
+     * For {@code invokevirtual}/{@code invokestatic}/{@code invokeinterface}, an
+     * optional {@code itf="true|false"} attribute controls the {@code isInterface}
+     * flag passed to {@link org.objectweb.asm.MethodVisitor#visitMethodInsn}.
+     * Defaults: {@code invokeinterface} → true, others → false.
+     */
+    private static void parseInstructions(Element parent, List<Instruction> out) {
+        for (Element insn : parent.getChildren()) {
+            String tag = insn.getName();
+            switch (tag) {
+                case "getstatic" -> out.add(new Instruction("getstatic",
+                    insn.getAttributeValue("owner").replace('.', '/'),
+                    insn.getAttributeValue("name"),
+                    insn.getAttributeValue("type").replace('.', '/')));
+                case "areturn" -> out.add(new Instruction("areturn"));
+                case "return" -> out.add(new Instruction("return"));
+                case "aconst_null" -> out.add(new Instruction("aconst_null"));
+                case "checkcast" -> out.add(new Instruction("checkcast",
+                    insn.getAttributeValue("type").replace('.', '/')));
+                case "invokevirtual", "invokestatic", "invokeinterface" -> {
+                    String itfAttr = insn.getAttributeValue("itf");
+                    String itf = itfAttr != null
+                        ? itfAttr
+                        : (tag.equals("invokeinterface") ? "true" : "false");
+                    out.add(new Instruction(tag,
+                        insn.getAttributeValue("owner").replace('.', '/'),
+                        insn.getAttributeValue("name"),
+                        insn.getAttributeValue("desc"),
+                        itf));
+                }
+                case "aload" -> out.add(new Instruction("aload",
+                    insn.getAttributeValue("index")));
+            }
+        }
+    }
+
     // Data classes
 
     public record PackageRule(String from, String to) {}
@@ -326,6 +352,7 @@ public class MappingConfig {
         public final Map<Integer, String> replaceParams = new TreeMap<>();  // index → new type
         public final Set<Integer> removeParams = new TreeSet<>();           // indices to remove
         public final Map<Integer, String> addParams = new TreeMap<>();      // index → type to insert
+        public List<Instruction> bodyInstructions;             // non-null ⇒ replace the original method body
     }
 
     public static class ModuleDefinition {

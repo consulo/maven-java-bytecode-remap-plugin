@@ -39,37 +39,58 @@ public class ClassModifierVisitor extends ClassVisitor {
     public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
         existingMethods.add(name + descriptor);
         // Check if this method should be overridden
+        MappingConfig.MethodOverride matched = null;
         for (MappingConfig.MethodOverride override : mod.methodOverrides) {
             if (override.name.equals(name)) {
                 // Match by descriptor if specified, otherwise match by name only
                 if (override.originalDesc != null && !override.originalDesc.equals(descriptor)) {
                     continue;
                 }
-
-                // Modify access
-                if (override.changeAccess != null) {
-                    int newAccess = access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED | Opcodes.ACC_PRIVATE);
-                    newAccess |= switch (override.changeAccess) {
-                        case "public" -> Opcodes.ACC_PUBLIC;
-                        case "protected" -> Opcodes.ACC_PROTECTED;
-                        case "private" -> Opcodes.ACC_PRIVATE;
-                        default -> 0;
-                    };
-                    access = newAccess;
-                }
-
-                // Modify descriptor if any param/return changes
-                if (override.replaceReturnType != null || !override.replaceParams.isEmpty()
-                    || !override.removeParams.isEmpty() || !override.addParams.isEmpty()) {
-                    descriptor = buildNewDescriptor(descriptor, override);
-                    signature = null; // clear generic signature since we changed the descriptor
-                }
-
+                matched = override;
                 break;
             }
         }
+
+        if (matched != null) {
+            // Modify access
+            if (matched.changeAccess != null) {
+                int newAccess = access & ~(Opcodes.ACC_PUBLIC | Opcodes.ACC_PROTECTED | Opcodes.ACC_PRIVATE);
+                newAccess |= switch (matched.changeAccess) {
+                    case "public" -> Opcodes.ACC_PUBLIC;
+                    case "protected" -> Opcodes.ACC_PROTECTED;
+                    case "private" -> Opcodes.ACC_PRIVATE;
+                    default -> 0;
+                };
+                access = newAccess;
+            }
+
+            // Modify descriptor if any param/return changes
+            if (matched.replaceReturnType != null || !matched.replaceParams.isEmpty()
+                || !matched.removeParams.isEmpty() || !matched.addParams.isEmpty()) {
+                descriptor = buildNewDescriptor(descriptor, matched);
+                signature = null; // clear generic signature since we changed the descriptor
+            }
+
+            // Replace the method body entirely: write the new body to the delegate
+            // and return a no-op visitor that absorbs the original body events.
+            if (matched.bodyInstructions != null && !matched.bodyInstructions.isEmpty()) {
+                MethodVisitor mv = super.visitMethod(access, name, descriptor, signature, exceptions);
+                if (mv != null) {
+                    mv.visitCode();
+                    for (MappingConfig.Instruction insn : matched.bodyInstructions) {
+                        emitInstruction(mv, insn);
+                    }
+                    mv.visitMaxs(4, 4);
+                    mv.visitEnd();
+                }
+                return NO_OP_METHOD_VISITOR;
+            }
+        }
+
         return super.visitMethod(access, name, descriptor, signature, exceptions);
     }
+
+    private static final MethodVisitor NO_OP_METHOD_VISITOR = new MethodVisitor(Opcodes.ASM9, null) {};
 
     private String buildNewDescriptor(String originalDesc, MappingConfig.MethodOverride override) {
         // Parse original params
@@ -242,12 +263,20 @@ public class ClassModifierVisitor extends ClassVisitor {
             case "checkcast" -> mv.visitTypeInsn(Opcodes.CHECKCAST, remapper.map(insn.args[0]));
             case "aload" -> mv.visitVarInsn(Opcodes.ALOAD, Integer.parseInt(insn.args[0]));
             case "invokevirtual" -> mv.visitMethodInsn(Opcodes.INVOKEVIRTUAL,
-                remapper.map(insn.args[0]), insn.args[1], insn.args[2], false);
+                remapper.map(insn.args[0]), insn.args[1], insn.args[2], isItf(insn, false));
             case "invokestatic" -> mv.visitMethodInsn(Opcodes.INVOKESTATIC,
-                remapper.map(insn.args[0]), insn.args[1], insn.args[2], false);
+                remapper.map(insn.args[0]), insn.args[1], insn.args[2], isItf(insn, false));
             case "invokeinterface" -> mv.visitMethodInsn(Opcodes.INVOKEINTERFACE,
-                remapper.map(insn.args[0]), insn.args[1], insn.args[2], true);
+                remapper.map(insn.args[0]), insn.args[1], insn.args[2], isItf(insn, true));
         }
+    }
+
+    /** Read the optional itf flag from an invoke instruction's args[3], falling back to the default. */
+    private static boolean isItf(MappingConfig.Instruction insn, boolean defaultValue) {
+        if (insn.args.length > 3) {
+            return "true".equals(insn.args[3]);
+        }
+        return defaultValue;
     }
 
     private void generateDefaultReturn(MethodVisitor mv, String returnDesc) {
