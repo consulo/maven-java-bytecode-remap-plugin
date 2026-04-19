@@ -1,4 +1,4 @@
-package consulo.maven.remap;
+package consulo.maven.javaBytecodeRemap;
 
 import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.ModuleVisitor;

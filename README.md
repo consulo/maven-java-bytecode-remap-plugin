@@ -1,4 +1,4 @@
-# consulo-remap-plugin
+# Maven Java Bytecode Remap Plugin
 
 A Maven plugin that rewrites Java bytecode at build time from an XML mapping file. It retargets code written against the IntelliJ Platform API onto the Consulo API: package renames, class renames, split packages, class-to-interface changes, signature fixups, synthesised methods/fields/annotations, and a generated `module-info` plus Consulo service bindings.
 
@@ -8,8 +8,8 @@ The heavy lifting is ASM 9.7.1. The configuration is one `remap.xml` per project
 
 | Goal | Binds to | Purpose |
 |---|---|---|
-| `consulo-remap:remap-jar` | `package` | Rewrite an already-built JAR (typically a shaded uberjar) in place. Can also inject a synthetic `module-info` and Consulo service bindings. |
-| `consulo-remap:remap` | `process-classes` | Aggregate classes from dependency JARs, remap them, and write to `${project.build.outputDirectory}` so `maven-jar-plugin` packages them normally. |
+| `java-bytecode-remap:remap-jar` | `package` | Rewrite an already-built JAR (typically a shaded uberjar) in place. Can also inject a synthetic `module-info` and Consulo service bindings. |
+| `java-bytecode-remap:remap` | `process-classes` | Aggregate classes from dependency JARs, remap them, and write to `${project.build.outputDirectory}` so `maven-jar-plugin` packages them normally. |
 
 Pick `remap-jar` if you already use `maven-shade-plugin`. Pick `remap` if you want the plugin to pull classes out of dependency JARs itself.
 
@@ -29,7 +29,7 @@ Pick `remap-jar` if you already use `maven-shade-plugin`. Pick `remap` if you wa
            ┌────────────────┐
            │ shaded.jar     │
            └───────┬────────┘
-                   │ consulo-remap:remap-jar
+                   │ java-bytecode-remap:remap-jar
                    ▼
     ┌──────────────────────────────────┐
     │ ClassRemapper ────────────►      │  package/class rewrite via remap.xml
@@ -75,7 +75,7 @@ Typical `remap-jar` wiring (runs after `maven-shade-plugin` in the same `package
 <!-- Step 2: remap the shaded JAR in place -->
 <plugin>
     <groupId>consulo.maven</groupId>
-    <artifactId>consulo-remap-plugin</artifactId>
+    <artifactId>maven-java-bytecode-remap-plugin</artifactId>
     <version>1.0-SNAPSHOT</version>
     <executions>
         <execution>
@@ -301,10 +301,10 @@ Why each rule exists:
 ## Building the plugin
 
 ```bash
-mvn -f /path/to/consulo-remap-plugin/pom.xml clean install
+mvn -f /path/to/maven-java-bytecode-remap-plugin/pom.xml clean install
 ```
 
-Produces `consulo.maven:consulo-remap-plugin:1.0-SNAPSHOT` in your local repo. Requires JDK 21 and Maven 3.6+.
+Produces `consulo.maven:maven-java-bytecode-remap-plugin:1.0-SNAPSHOT` in your local repo. Requires JDK 21 and Maven 3.6+.
 
 ## Dependencies
 

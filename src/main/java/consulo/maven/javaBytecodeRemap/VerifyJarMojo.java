@@ -1,4 +1,4 @@
-package consulo.maven.remap;
+package consulo.maven.javaBytecodeRemap;
 
 import org.apache.maven.artifact.Artifact;
 import org.apache.maven.plugin.AbstractMojo;

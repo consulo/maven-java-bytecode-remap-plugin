@@ -5,13 +5,14 @@
     <modelVersion>4.0.0</modelVersion>
 
     <groupId>consulo.maven</groupId>
-    <artifactId>consulo-remap-plugin</artifactId>
+    <artifactId>maven-java-bytecode-remap-plugin</artifactId>
     <version>1.0-SNAPSHOT</version>
     <packaging>maven-plugin</packaging>
 
-    <name>Consulo Remap Plugin</name>
-    <description>Maven plugin for per-class bytecode remapping with XML configuration.
-    Supports package rules, per-class overrides, and class modifications (add methods/fields/annotations).</description>
+    <name>Maven Java Bytecode Remap Plugin</name>
+    <description>Maven plugin for per-class Java bytecode remapping with XML configuration.
+    Supports package rules, per-class overrides, class modifications (add methods/fields/annotations),
+    module-info generation, Consulo service-binding generation, and ASM-based post-remap verification.</description>
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
@@ -91,7 +92,7 @@
                 <artifactId>maven-plugin-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <goalPrefix>consulo-remap</goalPrefix>
+                    <goalPrefix>java-bytecode-remap</goalPrefix>
                 </configuration>
             </plugin>
         </plugins>
