@@ -87,7 +87,7 @@ public class CallSiteFixVisitor extends ClassVisitor {
                 return;
             }
             if (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE || opcode == Opcodes.INVOKESTATIC) {
-                MappingConfig.Redirect redirect = config.findMethodRedirect(owner, name, descriptor);
+                MappingConfig.Redirect redirect = config.findMethodRedirect(owner, name, descriptor, kinds);
                 if (redirect != null) {
                     String desc = opcode == Opcodes.INVOKESTATIC
                         ? descriptor

@@ -376,6 +376,15 @@ public class MappingConfig {
      * through subclasses); the receiver is then passed as {@code owner}.
      */
     public Redirect findMethodRedirect(String owner, String name, String desc) {
+        return findMethodRedirect(owner, name, desc, null);
+    }
+
+    /**
+     * As {@link #findMethodRedirect(String, String, String)}; an {@code anyOwner} redirect is skipped when
+     * {@code kinds} knows that {@code owner} is not a subtype of the redirect's owner (an unrelated class with a
+     * method of the same name and descriptor).
+     */
+    public Redirect findMethodRedirect(String owner, String name, String desc, ClassKindIndex kinds) {
         List<Redirect> list = methodRedirects.get(name + desc);
         if (list == null) {
             return null;
@@ -386,7 +395,7 @@ public class MappingConfig {
             }
         }
         for (Redirect r : list) {
-            if (r.anyOwner()) {
+            if (r.anyOwner() && (kinds == null || !Boolean.FALSE.equals(kinds.isSubtype(owner, r.owner())))) {
                 return r;
             }
         }
