@@ -62,7 +62,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 9;
+    private static final int CACHE_VERSION = 10;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -181,6 +181,21 @@ public class RemapJarMojo extends AbstractMojo {
                             String bindingClass = bd.implClass + "_Binding";
                             String bindingEntry = bindingClass + ".class";
                             if (!writtenEntries.add(bindingEntry)) continue;
+                            if ("topicBinding".equals(bd.type)) {
+                                byte[] apiBytes = remappedClasses.get(bd.apiClass + ".class");
+                                if (apiBytes == null) {
+                                    throw new MojoExecutionException("Topic binding for a class not in the jar: " + bd.apiClass);
+                                }
+                                for (var generated : TopicBindingGenerator.generate(bd.apiClass, apiBytes).entrySet()) {
+                                    String entryName = generated.getKey() + ".class";
+                                    if (!entryName.equals(bindingEntry) && !writtenEntries.add(entryName)) continue;
+                                    jos.putNextEntry(new JarEntry(entryName));
+                                    jos.write(generated.getValue());
+                                    jos.closeEntry();
+                                }
+                                getLog().info("  Generated topic binding: " + bindingClass.replace('/', '.'));
+                                continue;
+                            }
                             byte[] implBytes = remappedClasses.get(bd.implClass + ".class");
                             String constructor = implBytes != null ? BindingGenerator.chooseConstructor(implBytes) : "()V";
                             byte[] bindingBytes = BindingGenerator.generate(bd.implClass, bd.apiClass,

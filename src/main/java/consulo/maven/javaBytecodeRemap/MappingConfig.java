@@ -227,10 +227,11 @@ public class MappingConfig {
                 // Binding generation
                 for (Element binding : provides.getChildren("binding")) {
                     BindingDeclaration bd = new BindingDeclaration();
-                    bd.implClass = binding.getAttributeValue("impl").replace('.', '/');
                     bd.apiClass = binding.getAttributeValue("api").replace('.', '/');
+                    // a topicBinding has no implementation: its binding class is named after the topic interface
+                    bd.implClass = Objects.requireNonNullElse(binding.getAttributeValue("impl"), bd.apiClass.replace('/', '.')).replace('.', '/');
                     bd.scope = binding.getAttributeValue("scope"); // APPLICATION, PROJECT, etc.
-                    bd.type = binding.getAttributeValue("type"); // extension (default), service, topic
+                    bd.type = binding.getAttributeValue("type"); // extension (default), service, topic, topicBinding
                     sp.bindings.add(bd);
                 }
                 md.provides.add(sp);
@@ -487,6 +488,6 @@ public class MappingConfig {
         public String implClass;
         public String apiClass;
         public String scope; // APPLICATION, PROJECT, etc.
-        public String type; // extension (default), service, topic
+        public String type; // extension (default), service, topic, topicBinding (a TopicBinding of the api)
     }
 }
