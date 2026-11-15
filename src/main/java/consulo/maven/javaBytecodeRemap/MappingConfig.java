@@ -43,11 +43,19 @@ public class MappingConfig {
     /** Static field reads redirected to a static getter: "owner.name" → redirect. */
     private final Map<String, Redirect> fieldRedirects = new HashMap<>();
 
+    /** Classes (or packages) copied unchanged: they use names that rules would rewrite on purpose. */
+    private final List<String> verbatim = new ArrayList<>();
+
     public static MappingConfig parse(File xmlFile) throws Exception {
         MappingConfig config = new MappingConfig();
         SAXBuilder builder = new SAXBuilder();
         Document doc = builder.build(xmlFile);
         Element root = doc.getRootElement();
+
+        // Classes copied unchanged: <verbatim name="a.b.C"/> (the class, its nested classes, or a package)
+        for (Element v : root.getChildren("verbatim")) {
+            config.verbatim.add(v.getAttributeValue("name").replace('.', '/'));
+        }
 
         // Parse package rules
         Element packages = root.getChild("packages");
@@ -260,6 +268,16 @@ public class MappingConfig {
      * Remap an internal class name.
      * Checks class rules first (exact match), then package rules (longest prefix).
      */
+    /** Whether a class is copied unchanged (see {@code <verbatim>}). */
+    public boolean isVerbatim(String internalName) {
+        for (String name : verbatim) {
+            if (internalName.equals(name) || internalName.startsWith(name + "/") || internalName.startsWith(name + "$")) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public String remapClass(String internalName) {
         // Check class rules first (exact match)
         String classResult = classRules.get(internalName);
@@ -391,6 +409,7 @@ public class MappingConfig {
         newRedirects.putAll(other.newRedirects);
         instanceofRedirects.putAll(other.instanceofRedirects);
         constructorDrops.addAll(other.constructorDrops);
+        verbatim.addAll(other.verbatim);
         if (other.moduleDefinition != null) {
             // the jar being remapped is one module; the last file that defines it wins
             moduleDefinition = other.moduleDefinition;

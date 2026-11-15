@@ -62,7 +62,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 13;
+    private static final int CACHE_VERSION = 14;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -153,8 +153,9 @@ public class RemapJarMojo extends AbstractMojo {
                      new BufferedOutputStream(new FileOutputStream(tempJar)))) {
 
                 for (var entry : classEntries.entrySet()) {
-                    byte[] remapped = remapClass(entry.getValue(), config, remapper);
-                    String newName = remapResourcePath(entry.getKey(), config);
+                    boolean verbatim = config.isVerbatim(entry.getKey().substring(0, entry.getKey().length() - 6));
+                    byte[] remapped = verbatim ? entry.getValue() : remapClass(entry.getValue(), config, remapper);
+                    String newName = verbatim ? entry.getKey() : remapResourcePath(entry.getKey(), config);
                     remappedClasses.put(newName, remapped);
                     if (writtenEntries.add(newName)) {
                         jos.putNextEntry(new JarEntry(newName));
