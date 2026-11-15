@@ -147,6 +147,31 @@ Rules are sorted longest-prefix-first, so `com.intellij.psi.impl` will always be
 
 `owner` is the **remapped** class name.
 
+### `<redirects>` — call sites rewritten to static helpers
+
+For API that has no direct equivalent (a missing overload, an interface default, a static helper), point
+the call at a static method of your own. Names and descriptors are the **remapped** ones (after
+`<packages>`/`<classes>`/`<methods>`).
+
+```xml
+<redirects>
+    <!-- instance call: becomes invokestatic Compat.getElementType(Lconsulo/language/psi/stub/StubElement;)... -->
+    <method owner="consulo.language.psi.stub.StubElement" name="getElementType"
+            desc="()Lconsulo/language/ast/IElementType;" target="my.compat.StubCompat"/>
+    <!-- anyOwner: also match calls made through subclasses (by name + desc) -->
+    <method owner="consulo.language.psi.stub.StubElement" name="findChildStubByElementType" anyOwner="true"
+            desc="(Lconsulo/language/ast/IElementType;)Lconsulo/language/psi/stub/StubElement;" target="my.compat.StubCompat"/>
+    <!-- static call: same descriptor, new owner -->
+    <method owner="consulo.util.lang.StringUtil" name="escapeStringCharacters"
+            desc="(Ljava/lang/String;)Ljava/lang/String;" target="my.compat.StringCompat"/>
+    <!-- static field read: becomes invokestatic target.targetName()desc -->
+    <field owner="consulo.language.psi.PsiModificationTracker" name="TOPIC"
+           desc="Lconsulo/component/messagebus/Topic;" target="my.compat.Topics" targetName="psiModificationTopic"/>
+</redirects>
+```
+
+Instance calls pass the receiver as the first argument (typed as `owner`). `targetName` defaults to `name`.
+
 ### `<modifications>` — structural class edits
 
 ```xml

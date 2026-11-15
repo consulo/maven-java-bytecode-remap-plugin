@@ -6,6 +6,7 @@ import org.objectweb.asm.*;
  * Fixes call sites after remapping:
  * - Field type overrides (visitFieldInsn descriptor fix)
  * - Class-to-interface transitions (invokestatic on class → invokestatic on interface)
+ * - Call redirects: calls and static field reads rewritten to static helpers
  *
  * Must run AFTER ClassRemapper (operates on remapped names).
  */
@@ -35,6 +36,13 @@ public class CallSiteFixVisitor extends ClassVisitor {
 
         @Override
         public void visitFieldInsn(int opcode, String owner, String name, String descriptor) {
+            if (opcode == Opcodes.GETSTATIC) {
+                MappingConfig.Redirect redirect = config.findFieldRedirect(owner, name);
+                if (redirect != null) {
+                    super.visitMethodInsn(Opcodes.INVOKESTATIC, redirect.target(), redirect.targetName(), "()" + descriptor, false);
+                    return;
+                }
+            }
             // Fix field type overrides
             String override = config.getFieldTypeOverride(owner, name);
             if (override != null) {
@@ -45,6 +53,16 @@ public class CallSiteFixVisitor extends ClassVisitor {
 
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+            if (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE || opcode == Opcodes.INVOKESTATIC) {
+                MappingConfig.Redirect redirect = config.findMethodRedirect(owner, name, descriptor);
+                if (redirect != null) {
+                    String desc = opcode == Opcodes.INVOKESTATIC
+                        ? descriptor
+                        : "(L" + redirect.owner() + ";" + descriptor.substring(1);
+                    super.visitMethodInsn(Opcodes.INVOKESTATIC, redirect.target(), redirect.targetName(), desc, false);
+                    return;
+                }
+            }
             // Fix class-to-interface transitions
             if (config.isClassToInterface(owner)) {
                 isInterface = true;

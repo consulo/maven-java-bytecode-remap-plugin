@@ -32,6 +32,12 @@ public class MappingConfig {
     /** Class modifications: add methods, fields, annotations */
     private final Map<String, ClassModification> modifications = new HashMap<>();
 
+    /** Call redirects keyed by "name" + descriptor (remapped names); see {@link Redirect}. */
+    private final Map<String, List<Redirect>> methodRedirects = new HashMap<>();
+
+    /** Static field reads redirected to a static getter: "owner.name" → redirect. */
+    private final Map<String, Redirect> fieldRedirects = new HashMap<>();
+
     public static MappingConfig parse(File xmlFile) throws Exception {
         MappingConfig config = new MappingConfig();
         SAXBuilder builder = new SAXBuilder();
@@ -71,6 +77,31 @@ public class MappingConfig {
                 String name = rule.getAttributeValue("name");
                 String newName = rule.getAttributeValue("newName");
                 config.methodRenames.put(owner + "." + name, newName);
+            }
+        }
+
+        // Parse call redirects (owner, name and desc use remapped names)
+        Element redirects = root.getChild("redirects");
+        if (redirects != null) {
+            for (Element r : redirects.getChildren("method")) {
+                Redirect redirect = new Redirect(
+                    r.getAttributeValue("owner").replace('.', '/'),
+                    r.getAttributeValue("name"),
+                    r.getAttributeValue("desc"),
+                    "true".equals(r.getAttributeValue("anyOwner")),
+                    r.getAttributeValue("target").replace('.', '/'),
+                    Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")));
+                config.methodRedirects.computeIfAbsent(redirect.name() + redirect.desc(), k -> new ArrayList<>()).add(redirect);
+            }
+            for (Element r : redirects.getChildren("field")) {
+                Redirect redirect = new Redirect(
+                    r.getAttributeValue("owner").replace('.', '/'),
+                    r.getAttributeValue("name"),
+                    r.getAttributeValue("desc"),
+                    false,
+                    r.getAttributeValue("target").replace('.', '/'),
+                    Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")));
+                config.fieldRedirects.put(redirect.owner() + "." + redirect.name(), redirect);
             }
         }
 
@@ -305,6 +336,36 @@ public class MappingConfig {
     }
 
     // Data classes
+
+    /**
+     * Redirect for a call site whose target does not exist in the new API.
+     * Instance calls become {@code invokestatic target.targetName(Owner, args...)}; static calls keep
+     * their descriptor. With {@code anyOwner}, calls are matched by name and descriptor only (calls made
+     * through subclasses); the receiver is then passed as {@code owner}.
+     */
+    public Redirect findMethodRedirect(String owner, String name, String desc) {
+        List<Redirect> list = methodRedirects.get(name + desc);
+        if (list == null) {
+            return null;
+        }
+        for (Redirect r : list) {
+            if (r.owner().equals(owner)) {
+                return r;
+            }
+        }
+        for (Redirect r : list) {
+            if (r.anyOwner()) {
+                return r;
+            }
+        }
+        return null;
+    }
+
+    public Redirect findFieldRedirect(String owner, String name) {
+        return fieldRedirects.get(owner + "." + name);
+    }
+
+    public record Redirect(String owner, String name, String desc, boolean anyOwner, String target, String targetName) {}
 
     public record PackageRule(String from, String to) {}
 
