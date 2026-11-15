@@ -61,7 +61,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 6;
+    private static final int CACHE_VERSION = 7;
 
     @Override
     public void execute() throws MojoExecutionException {

@@ -363,6 +363,7 @@ public class MappingConfig {
         fieldRedirects.putAll(other.fieldRedirects);
         newRedirects.putAll(other.newRedirects);
         if (other.moduleDefinition != null) {
+            // the jar being remapped is one module; the last file that defines it wins
             moduleDefinition = other.moduleDefinition;
         }
     }

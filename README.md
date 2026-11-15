@@ -242,6 +242,8 @@ Children of `<addMethod>` (raw bytecode — each tag is one JVM instruction):
 
 ### `<module>` — synthesised `module-info` and service bindings
 
+With `extraMappingFiles`, the last file that has a `<module>` defines the jar's module.
+
 `exportAll="true"` exports every package that has classes in the jar (useful for a library module). Explicit
 `<exports>` naming a package without classes are dropped with a warning, since the JVM rejects such a module.
 
