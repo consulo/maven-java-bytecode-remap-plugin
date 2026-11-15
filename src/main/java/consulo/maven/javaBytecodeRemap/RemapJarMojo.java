@@ -42,6 +42,13 @@ public class RemapJarMojo extends AbstractMojo {
     private File mappingFile;
 
     /**
+     * More mapping files applied on top of {@link #mappingFile}, in order (e.g. a project's own rules over a
+     * shared mapping). Later files win for the same class, method, redirect or module definition.
+     */
+    @Parameter
+    private List<File> extraMappingFiles = new ArrayList<>();
+
+    /**
      * JAR file to remap. Defaults to the project's main artifact JAR.
      */
     @Parameter
@@ -72,7 +79,8 @@ public class RemapJarMojo extends AbstractMojo {
             File cacheMarker = new File(project.getBuild().getDirectory(), "consulo-remap-jar.v" + CACHE_VERSION + ".cache");
             if (cacheMarker.exists()
                 && jar.lastModified() <= cacheMarker.lastModified()
-                && mappingFile.lastModified() <= cacheMarker.lastModified()) {
+                && mappingFile.lastModified() <= cacheMarker.lastModified()
+                && extraMappingFiles.stream().allMatch(f -> f.lastModified() <= cacheMarker.lastModified())) {
                 getLog().info("Remap-jar is up-to-date, skipping");
                 return;
             }
@@ -85,6 +93,10 @@ public class RemapJarMojo extends AbstractMojo {
 
             getLog().info("Loading mapping from: " + mappingFile);
             MappingConfig config = MappingConfig.parse(mappingFile);
+            for (File extra : extraMappingFiles) {
+                getLog().info("Loading extra mapping from: " + extra);
+                config.mergeFrom(MappingConfig.parse(extra));
+            }
             getLog().info("  Package rules: " + config.getPackageRules().size());
             getLog().info("  Class rules: " + config.getClassRules().size());
 

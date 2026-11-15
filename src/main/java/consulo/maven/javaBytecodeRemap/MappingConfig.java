@@ -343,6 +343,23 @@ public class MappingConfig {
 
     // Data classes
 
+    /** Adds the rules of {@code other}; its entries win where both define the same key. */
+    public void mergeFrom(MappingConfig other) {
+        packageRules.addAll(other.packageRules);
+        packageRules.sort((a, b) -> Integer.compare(b.from.length(), a.from.length()));
+        classRules.putAll(other.classRules);
+        methodRenames.putAll(other.methodRenames);
+        fieldTypeOverrides.putAll(other.fieldTypeOverrides);
+        classToInterface.addAll(other.classToInterface);
+        modifications.putAll(other.modifications);
+        other.methodRedirects.forEach((key, list) -> methodRedirects.computeIfAbsent(key, k -> new ArrayList<>()).addAll(0, list));
+        fieldRedirects.putAll(other.fieldRedirects);
+        newRedirects.putAll(other.newRedirects);
+        if (other.moduleDefinition != null) {
+            moduleDefinition = other.moduleDefinition;
+        }
+    }
+
     /**
      * Redirect for a call site whose target does not exist in the new API.
      * Instance calls become {@code invokestatic target.targetName(Owner, args...)}; static calls keep
