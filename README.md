@@ -232,7 +232,18 @@ Children of `<addMethod>` (raw bytecode — each tag is one JVM instruction):
 | `<areturn>` | — |
 | `<return>` | — |
 
+`<addAnnotation>` may carry enum elements, e.g. a Consulo service API:
+
+```xml
+<addAnnotation type="consulo.annotation.component.ServiceAPI">
+    <enum name="value" type="consulo.annotation.component.ComponentScope" value="APPLICATION"/>
+</addAnnotation>
+```
+
 ### `<module>` — synthesised `module-info` and service bindings
+
+`exportAll="true"` exports every package that has classes in the jar (useful for a library module). Explicit
+`<exports>` naming a package without classes are dropped with a warning, since the JVM rejects such a module.
 
 ```xml
 <module name="consulo.kotlin.remapped">

@@ -61,7 +61,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 4;
+    private static final int CACHE_VERSION = 6;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -194,7 +194,14 @@ public class RemapJarMojo extends AbstractMojo {
 
                     // Generate module-info.class
                     if (writtenEntries.add("module-info.class")) {
-                        byte[] moduleInfo = ModuleInfoGenerator.generate(moduleDef);
+                        Set<String> packages = new TreeSet<>();
+                        for (String entry : writtenEntries) {
+                            int slash = entry.lastIndexOf('/');
+                            if (entry.endsWith(".class") && slash > 0 && !entry.startsWith("META-INF/")) {
+                                packages.add(entry.substring(0, slash));
+                            }
+                        }
+                        byte[] moduleInfo = ModuleInfoGenerator.generate(moduleDef, packages, msg -> getLog().warn(msg));
                         jos.putNextEntry(new JarEntry("module-info.class"));
                         jos.write(moduleInfo);
                         jos.closeEntry();

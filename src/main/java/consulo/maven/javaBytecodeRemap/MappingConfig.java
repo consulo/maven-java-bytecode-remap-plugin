@@ -125,7 +125,13 @@ public class MappingConfig {
                 }
 
                 for (Element ann : classEl.getChildren("addAnnotation")) {
-                    mod.annotations.add(ann.getAttributeValue("type").replace('.', '/'));
+                    String type = ann.getAttributeValue("type").replace('.', '/');
+                    mod.annotations.add(type);
+                    // <enum name="value" type="pkg.Enum" value="CONSTANT"/> elements
+                    for (Element e : ann.getChildren("enum")) {
+                        mod.annotationEnums.computeIfAbsent(type, k -> new ArrayList<>()).add(new String[]{
+                            e.getAttributeValue("name"), e.getAttributeValue("type").replace('.', '/'), e.getAttributeValue("value")});
+                    }
                 }
 
                 for (Element method : classEl.getChildren("addMethod")) {
@@ -202,6 +208,7 @@ public class MappingConfig {
         if (module != null) {
             ModuleDefinition md = new ModuleDefinition();
             md.name = module.getAttributeValue("name");
+            md.exportAll = "true".equals(module.getAttributeValue("exportAll"));
 
             for (Element req : module.getChildren("requires")) {
                 md.requires.add(req.getTextTrim());
@@ -401,6 +408,8 @@ public class MappingConfig {
         public final String className;
         public final Map<String, String> fieldTypeReplacements = new HashMap<>(); // fieldName → newType
         public final List<String> annotations = new ArrayList<>();
+        /** Enum elements of added annotations: annotation type -> [name, enum type, constant]. */
+        public final Map<String, List<String[]>> annotationEnums = new HashMap<>();
         public final List<MethodToAdd> methods = new ArrayList<>();
         public final List<FieldToAdd> fields = new ArrayList<>();
         public final List<MethodOverride> methodOverrides = new ArrayList<>();
@@ -446,6 +455,8 @@ public class MappingConfig {
 
     public static class ModuleDefinition {
         public String name;
+        /** Export every package of the jar (e.g. a library module), in addition to {@link #exports}. */
+        public boolean exportAll;
         public final List<String> requires = new ArrayList<>();
         public final List<String> exports = new ArrayList<>();
         public final List<ServiceProvision> provides = new ArrayList<>();

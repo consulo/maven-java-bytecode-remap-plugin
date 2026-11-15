@@ -9,7 +9,10 @@ import org.objectweb.asm.Opcodes;
  */
 public class ModuleInfoGenerator {
 
-    public static byte[] generate(MappingConfig.ModuleDefinition def) {
+    /**
+     * @param packages packages (internal names) that contain classes in the jar; a module may only export those
+     */
+    public static byte[] generate(MappingConfig.ModuleDefinition def, java.util.Set<String> packages, java.util.function.Consumer<String> warn) {
         ClassWriter cw = new ClassWriter(0);
 
         // Module class
@@ -26,7 +29,19 @@ public class ModuleInfoGenerator {
         }
 
         // exports
+        java.util.Set<String> exports = new java.util.TreeSet<>();
         for (String exp : def.exports) {
+            if (packages.contains(exp)) {
+                exports.add(exp);
+            }
+            else {
+                warn.accept("Not exporting " + exp.replace('/', '.') + ": no classes in that package");
+            }
+        }
+        if (def.exportAll) {
+            exports.addAll(packages);
+        }
+        for (String exp : exports) {
             mv.visitExport(exp, 0);
         }
 

@@ -1,5 +1,7 @@
 package consulo.maven.javaBytecodeRemap;
 
+import java.util.List;
+
 import org.objectweb.asm.*;
 
 /**
@@ -177,6 +179,9 @@ public class ClassModifierVisitor extends ClassVisitor {
             String remapped = remapper.map(annotation);
             AnnotationVisitor av = super.visitAnnotation("L" + remapped + ";", true);
             if (av != null) {
+                for (String[] e : mod.annotationEnums.getOrDefault(annotation, List.of())) {
+                    av.visitEnum(e[0], "L" + remapper.map(e[1]) + ";", e[2]);
+                }
                 av.visitEnd();
             }
         }
