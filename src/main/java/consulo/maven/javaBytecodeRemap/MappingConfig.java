@@ -35,6 +35,9 @@ public class MappingConfig {
     /** Call redirects keyed by "name" + descriptor (remapped names); see {@link Redirect}. */
     private final Map<String, List<Redirect>> methodRedirects = new HashMap<>();
 
+    /** Instantiations redirected to another class: owner → replacement (both remapped internal names). */
+    private final Map<String, String> newRedirects = new HashMap<>();
+
     /** Static field reads redirected to a static getter: "owner.name" → redirect. */
     private final Map<String, Redirect> fieldRedirects = new HashMap<>();
 
@@ -102,6 +105,9 @@ public class MappingConfig {
                     r.getAttributeValue("target").replace('.', '/'),
                     Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")));
                 config.fieldRedirects.put(redirect.owner() + "." + redirect.name(), redirect);
+            }
+            for (Element r : redirects.getChildren("new")) {
+                config.newRedirects.put(r.getAttributeValue("owner").replace('.', '/'), r.getAttributeValue("target").replace('.', '/'));
             }
         }
 
@@ -359,6 +365,11 @@ public class MappingConfig {
             }
         }
         return null;
+    }
+
+    /** Class to instantiate instead of {@code owner} (e.g. a class that became an interface), or null. */
+    public String findNewRedirect(String owner) {
+        return newRedirects.get(owner);
     }
 
     public Redirect findFieldRedirect(String owner, String name) {

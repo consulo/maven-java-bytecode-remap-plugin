@@ -172,6 +172,10 @@ the call at a static method of your own. Names and descriptors are the **remappe
 
 Instance calls pass the receiver as the first argument (typed as `owner`). `targetName` defaults to `name`.
 
+`<new owner="..." target="..."/>` instantiates `target` instead of `owner` (for a class that became an interface
+in the new API). Only `new Owner(...)` sites change — `NEW` and its constructor call — so `target` must have the
+same constructors and be assignable to `owner`; `super(...)` calls of subclasses are left alone.
+
 ### `<modifications>` — structural class edits
 
 ```xml

@@ -1,5 +1,8 @@
 package consulo.maven.javaBytecodeRemap;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.objectweb.asm.*;
 
 /**
@@ -7,6 +10,7 @@ import org.objectweb.asm.*;
  * - Field type overrides (visitFieldInsn descriptor fix)
  * - Class-to-interface transitions (invokestatic on class → invokestatic on interface)
  * - Call redirects: calls and static field reads rewritten to static helpers
+ * - Instantiation redirects: {@code new Owner(...)} becomes {@code new Target(...)} (same constructor descriptor)
  *
  * Must run AFTER ClassRemapper (operates on remapped names).
  */
@@ -30,8 +34,24 @@ public class CallSiteFixVisitor extends ClassVisitor {
     }
 
     private class CallSiteFixMethodVisitor extends MethodVisitor {
+        /** Redirected NEWs whose constructor call has not been seen yet, per owner (innermost last). */
+        private final Map<String, Integer> pendingNews = new HashMap<>();
+
         CallSiteFixMethodVisitor(MethodVisitor delegate) {
             super(Opcodes.ASM9, delegate);
+        }
+
+        @Override
+        public void visitTypeInsn(int opcode, String type) {
+            if (opcode == Opcodes.NEW) {
+                String target = config.findNewRedirect(type);
+                if (target != null) {
+                    pendingNews.merge(type, 1, Integer::sum);
+                    super.visitTypeInsn(opcode, target);
+                    return;
+                }
+            }
+            super.visitTypeInsn(opcode, type);
         }
 
         @Override
@@ -53,6 +73,12 @@ public class CallSiteFixVisitor extends ClassVisitor {
 
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+            // only constructor calls that belong to a redirected NEW (not super() calls of subclasses)
+            if (opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name) && pendingNews.getOrDefault(owner, 0) > 0) {
+                pendingNews.merge(owner, -1, Integer::sum);
+                super.visitMethodInsn(opcode, config.findNewRedirect(owner), name, descriptor, false);
+                return;
+            }
             if (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE || opcode == Opcodes.INVOKESTATIC) {
                 MappingConfig.Redirect redirect = config.findMethodRedirect(owner, name, descriptor);
                 if (redirect != null) {
