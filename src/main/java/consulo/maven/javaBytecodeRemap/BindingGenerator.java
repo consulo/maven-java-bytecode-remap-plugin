@@ -14,9 +14,40 @@ public class BindingGenerator {
      * @param implClass     internal name of the implementation (e.g., org/jetbrains/kotlin/parsing/KotlinParserDefinition)
      * @param apiClass      internal name of the API interface (e.g., consulo/language/parser/ParserDefinition)
      * @param scope         component scope (e.g., APPLICATION, PROJECT)
+     * @param type          extension (default), service or topic: the component annotation of the API
+     * @param constructor   descriptor of the implementation constructor; its parameters are injected
      * @return bytecode of the generated _Binding class
      */
     public static byte[] generate(String implClass, String apiClass, String scope) {
+        return generate(implClass, apiClass, scope, null, "()V");
+    }
+
+    /**
+     * The constructor a binding uses: the public no-arg one, else the public one with the fewest parameters.
+     */
+    public static String chooseConstructor(byte[] classBytes) {
+        String[] best = {null};
+        new ClassReader(classBytes).accept(new ClassVisitor(Opcodes.ASM9) {
+            @Override
+            public MethodVisitor visitMethod(int access, String name, String descriptor, String signature, String[] exceptions) {
+                if ("<init>".equals(name) && (access & Opcodes.ACC_PUBLIC) != 0 && (access & Opcodes.ACC_SYNTHETIC) == 0) {
+                    if (best[0] == null || Type.getArgumentTypes(descriptor).length < Type.getArgumentTypes(best[0]).length) {
+                        best[0] = descriptor;
+                    }
+                }
+                return null;
+            }
+        }, ClassReader.SKIP_CODE);
+        return best[0] != null ? best[0] : "()V";
+    }
+
+    public static byte[] generate(String implClass, String apiClass, String scope, String type, String constructor) {
+        Type[] parameters = Type.getArgumentTypes(constructor);
+        String annotationClass = switch (type == null ? "extension" : type) {
+            case "service" -> "consulo/annotation/component/ServiceAPI";
+            case "topic" -> "consulo/annotation/component/TopicAPI";
+            default -> "consulo/annotation/component/ExtensionAPI";
+        };
         String bindingClass = implClass + "_Binding";
         String scopeField = scope != null ? scope : "APPLICATION";
 
@@ -25,18 +56,24 @@ public class BindingGenerator {
             bindingClass, null, "java/lang/Object",
             new String[]{"consulo/component/bind/InjectingBinding"});
 
-        // Static field for empty types array
+        // Static field with the constructor parameter types
         cw.visitField(Opcodes.ACC_PRIVATE | Opcodes.ACC_STATIC | Opcodes.ACC_FINAL,
             "EMPTY_TYPES", "[Ljava/lang/reflect/Type;", null, null).visitEnd();
 
         // Static initializer
         MethodVisitor clinit = cw.visitMethod(Opcodes.ACC_STATIC, "<clinit>", "()V", null, null);
         clinit.visitCode();
-        clinit.visitInsn(Opcodes.ICONST_0);
+        clinit.visitLdcInsn(parameters.length);
         clinit.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/reflect/Type");
+        for (int i = 0; i < parameters.length; i++) {
+            clinit.visitInsn(Opcodes.DUP);
+            clinit.visitLdcInsn(i);
+            clinit.visitLdcInsn(parameters[i]);
+            clinit.visitInsn(Opcodes.AASTORE);
+        }
         clinit.visitFieldInsn(Opcodes.PUTSTATIC, bindingClass, "EMPTY_TYPES", "[Ljava/lang/reflect/Type;");
         clinit.visitInsn(Opcodes.RETURN);
-        clinit.visitMaxs(1, 0);
+        clinit.visitMaxs(4, 0);
         clinit.visitEnd();
 
         // Constructor
@@ -63,7 +100,7 @@ public class BindingGenerator {
         addClassReturn(cw, "getImplClass", implClass);
 
         // getComponentAnnotationClass
-        addClassReturn(cw, "getComponentAnnotationClass", "consulo/annotation/component/ExtensionAPI");
+        addClassReturn(cw, "getComponentAnnotationClass", annotationClass);
 
         // getComponentScope
         MethodVisitor scopeM = cw.visitMethod(Opcodes.ACC_PUBLIC, "getComponentScope",
@@ -79,7 +116,7 @@ public class BindingGenerator {
         addIntReturn(cw, "getComponentProfiles", 0);
 
         // getParametersCount
-        addIntReturn(cw, "getParametersCount", 0);
+        addIntReturn(cw, "getParametersCount", parameters.length);
 
         // getParameterTypes
         MethodVisitor paramTypes = cw.visitMethod(Opcodes.ACC_PUBLIC, "getParameterTypes",
@@ -96,9 +133,15 @@ public class BindingGenerator {
         create.visitCode();
         create.visitTypeInsn(Opcodes.NEW, implClass);
         create.visitInsn(Opcodes.DUP);
-        create.visitMethodInsn(Opcodes.INVOKESPECIAL, implClass, "<init>", "()V", false);
+        for (int i = 0; i < parameters.length; i++) {
+            create.visitVarInsn(Opcodes.ALOAD, 1);
+            create.visitLdcInsn(i);
+            create.visitInsn(Opcodes.AALOAD);
+            create.visitTypeInsn(Opcodes.CHECKCAST, parameters[i].getInternalName());
+        }
+        create.visitMethodInsn(Opcodes.INVOKESPECIAL, implClass, "<init>", constructor, false);
         create.visitInsn(Opcodes.ARETURN);
-        create.visitMaxs(2, 2);
+        create.visitMaxs(2 + parameters.length + 2, 2);
         create.visitEnd();
 
         cw.visitEnd();

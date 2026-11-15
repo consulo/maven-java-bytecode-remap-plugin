@@ -230,6 +230,7 @@ public class MappingConfig {
                     bd.implClass = binding.getAttributeValue("impl").replace('.', '/');
                     bd.apiClass = binding.getAttributeValue("api").replace('.', '/');
                     bd.scope = binding.getAttributeValue("scope"); // APPLICATION, PROJECT, etc.
+                    bd.type = binding.getAttributeValue("type"); // extension (default), service, topic
                     sp.bindings.add(bd);
                 }
                 md.provides.add(sp);
@@ -477,5 +478,6 @@ public class MappingConfig {
         public String implClass;
         public String apiClass;
         public String scope; // APPLICATION, PROJECT, etc.
+        public String type; // extension (default), service, topic
     }
 }

@@ -135,6 +135,7 @@ public class RemapJarMojo extends AbstractMojo {
 
             // Pass 2: Remap and write
             Set<String> writtenEntries = new HashSet<>();
+            Map<String, byte[]> remappedClasses = new HashMap<>();
 
             try (JarOutputStream jos = new JarOutputStream(
                      new BufferedOutputStream(new FileOutputStream(tempJar)))) {
@@ -142,6 +143,7 @@ public class RemapJarMojo extends AbstractMojo {
                 for (var entry : classEntries.entrySet()) {
                     byte[] remapped = remapClass(entry.getValue(), config, remapper);
                     String newName = remapResourcePath(entry.getKey(), config);
+                    remappedClasses.put(newName, remapped);
                     if (writtenEntries.add(newName)) {
                         jos.putNextEntry(new JarEntry(newName));
                         jos.write(remapped);
@@ -168,8 +170,10 @@ public class RemapJarMojo extends AbstractMojo {
                             String bindingClass = bd.implClass + "_Binding";
                             String bindingEntry = bindingClass + ".class";
                             if (!writtenEntries.add(bindingEntry)) continue;
+                            byte[] implBytes = remappedClasses.get(bd.implClass + ".class");
+                            String constructor = implBytes != null ? BindingGenerator.chooseConstructor(implBytes) : "()V";
                             byte[] bindingBytes = BindingGenerator.generate(bd.implClass, bd.apiClass,
-                                bd.scope != null ? bd.scope : "APPLICATION");
+                                bd.scope != null ? bd.scope : "APPLICATION", bd.type, constructor);
                             jos.putNextEntry(new JarEntry(bindingEntry));
                             jos.write(bindingBytes);
                             jos.closeEntry();
