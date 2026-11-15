@@ -62,7 +62,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 10;
+    private static final int CACHE_VERSION = 13;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -143,6 +143,7 @@ public class RemapJarMojo extends AbstractMojo {
                 }
             }
             kinds = new ClassKindIndex(allClassBytes, config::remapClass, classpath);
+            remapper.setKinds(kinds);
 
             // Pass 2: Remap and write
             Set<String> writtenEntries = new HashSet<>();

@@ -8,9 +8,15 @@ import org.objectweb.asm.commons.Remapper;
  */
 public class ConfigBasedRemapper extends Remapper {
     private final MappingConfig config;
+    private ClassKindIndex kinds;
 
     public ConfigBasedRemapper(MappingConfig config) {
         this.config = config;
+    }
+
+    /** Enables renames of methods declared or called through subtypes of a rename rule's owner. */
+    public void setKinds(ClassKindIndex kinds) {
+        this.kinds = kinds;
     }
 
     @Override
@@ -22,6 +28,16 @@ public class ConfigBasedRemapper extends Remapper {
     public String mapMethodName(String owner, String name, String descriptor) {
         // Use the already-remapped owner name for lookup
         String remappedOwner = map(owner);
-        return config.remapMethodName(remappedOwner, name);
+        String renamed = config.remapMethodName(remappedOwner, name);
+        if (!renamed.equals(name) || kinds == null) {
+            return renamed;
+        }
+        // an override (or a call through a subtype) of a renamed method: e.g. getHashCode of a KeyDescriptor implementation
+        for (java.util.Map.Entry<String, String> rule : config.methodRenamesByName(name).entrySet()) {
+            if (Boolean.TRUE.equals(kinds.isSubtype(remappedOwner, rule.getKey()))) {
+                return rule.getValue();
+            }
+        }
+        return name;
     }
 }

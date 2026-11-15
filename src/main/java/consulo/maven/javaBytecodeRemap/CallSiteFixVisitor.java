@@ -12,6 +12,8 @@ import org.objectweb.asm.*;
  * - Owner kind changes found on the classpath: invokevirtual on an interface → invokeinterface, and back
  * - Call redirects: calls and static field reads rewritten to static helpers
  * - Instantiation redirects: {@code new Owner(...)} becomes {@code new Target(...)} (same constructor descriptor)
+ * - instanceof redirects: {@code instanceof T} becomes a static boolean check
+ * - constructors without their first argument: {@code new T(a, b)} / {@code super(a, b)} becomes {@code T(b)}
  *
  * Must run AFTER ClassRemapper (operates on remapped names).
  */
@@ -50,6 +52,13 @@ public class CallSiteFixVisitor extends ClassVisitor {
 
         @Override
         public void visitTypeInsn(int opcode, String type) {
+            if (opcode == Opcodes.INSTANCEOF) {
+                String[] check = config.findInstanceofRedirect(type);
+                if (check != null) {
+                    super.visitMethodInsn(Opcodes.INVOKESTATIC, check[0], check[1], "(Ljava/lang/Object;)Z", false);
+                    return;
+                }
+            }
             if (opcode == Opcodes.NEW) {
                 String target = config.findNewRedirect(type);
                 if (target != null) {
@@ -86,10 +95,18 @@ public class CallSiteFixVisitor extends ClassVisitor {
                 super.visitMethodInsn(opcode, config.findNewRedirect(owner), name, descriptor, false);
                 return;
             }
+            if (opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name) && config.dropsFirstConstructorArgument(owner, descriptor)) {
+                Type[] arguments = Type.getArgumentTypes(descriptor);
+                super.visitInsn(Opcodes.SWAP);
+                super.visitInsn(Opcodes.POP);
+                super.visitMethodInsn(opcode, owner, name, Type.getMethodDescriptor(Type.VOID_TYPE, arguments[1]), isInterface);
+                return;
+            }
             if (opcode == Opcodes.INVOKEVIRTUAL || opcode == Opcodes.INVOKEINTERFACE || opcode == Opcodes.INVOKESTATIC) {
                 MappingConfig.Redirect redirect = config.findMethodRedirect(owner, name, descriptor, kinds);
                 if (redirect != null) {
-                    String desc = opcode == Opcodes.INVOKESTATIC
+                    String desc = redirect.targetDesc() != null ? redirect.targetDesc()
+                        : opcode == Opcodes.INVOKESTATIC
                         ? descriptor
                         : "(L" + redirect.owner() + ";" + descriptor.substring(1);
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, redirect.target(), redirect.targetName(), desc, false);

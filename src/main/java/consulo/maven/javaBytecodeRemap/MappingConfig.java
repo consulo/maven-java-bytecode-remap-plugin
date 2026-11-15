@@ -37,6 +37,8 @@ public class MappingConfig {
 
     /** Instantiations redirected to another class: owner → replacement (both remapped internal names). */
     private final Map<String, String> newRedirects = new HashMap<>();
+    private final Map<String, String[]> instanceofRedirects = new HashMap<>();
+    private final Set<String> constructorDrops = new HashSet<>();
 
     /** Static field reads redirected to a static getter: "owner.name" → redirect. */
     private final Map<String, Redirect> fieldRedirects = new HashMap<>();
@@ -93,7 +95,8 @@ public class MappingConfig {
                     r.getAttributeValue("desc"),
                     "true".equals(r.getAttributeValue("anyOwner")),
                     r.getAttributeValue("target").replace('.', '/'),
-                    Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")));
+                    Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")),
+                    r.getAttributeValue("targetDesc"));
                 config.methodRedirects.computeIfAbsent(redirect.name() + redirect.desc(), k -> new ArrayList<>()).add(redirect);
             }
             for (Element r : redirects.getChildren("field")) {
@@ -103,8 +106,18 @@ public class MappingConfig {
                     r.getAttributeValue("desc"),
                     false,
                     r.getAttributeValue("target").replace('.', '/'),
-                    Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")));
+                    Objects.requireNonNullElse(r.getAttributeValue("targetName"), r.getAttributeValue("name")),
+                    null);
                 config.fieldRedirects.put(redirect.owner() + "." + redirect.name(), redirect);
+            }
+            // instanceof T -> static boolean target.targetName(Object): a kind check the type itself cannot express
+            for (Element r : redirects.getChildren("instanceof")) {
+                config.instanceofRedirects.put(r.getAttributeValue("type").replace('.', '/'),
+                    new String[]{r.getAttributeValue("target").replace('.', '/'), r.getAttributeValue("targetName")});
+            }
+            // a constructor the target lacks, whose first argument it does without: owner(A, B) -> owner(B)
+            for (Element r : redirects.getChildren("dropFirstConstructorArgument")) {
+                config.constructorDrops.add(r.getAttributeValue("owner").replace('.', '/') + "." + r.getAttributeValue("desc"));
             }
             for (Element r : redirects.getChildren("new")) {
                 config.newRedirects.put(r.getAttributeValue("owner").replace('.', '/'), r.getAttributeValue("target").replace('.', '/'));
@@ -306,6 +319,18 @@ public class MappingConfig {
         return classToInterface.contains(internalName);
     }
 
+    /** Rename rules for a method name: rule owner -> new name. */
+    public Map<String, String> methodRenamesByName(String name) {
+        Map<String, String> result = new HashMap<>();
+        String suffix = "." + name;
+        methodRenames.forEach((key, newName) -> {
+            if (key.endsWith(suffix)) {
+                result.put(key.substring(0, key.length() - suffix.length()), newName);
+            }
+        });
+        return result;
+    }
+
     public String remapMethodName(String owner, String name) {
         String key = owner + "." + name;
         return methodRenames.getOrDefault(key, name);
@@ -364,6 +389,8 @@ public class MappingConfig {
         other.methodRedirects.forEach((key, list) -> methodRedirects.computeIfAbsent(key, k -> new ArrayList<>()).addAll(0, list));
         fieldRedirects.putAll(other.fieldRedirects);
         newRedirects.putAll(other.newRedirects);
+        instanceofRedirects.putAll(other.instanceofRedirects);
+        constructorDrops.addAll(other.constructorDrops);
         if (other.moduleDefinition != null) {
             // the jar being remapped is one module; the last file that defines it wins
             moduleDefinition = other.moduleDefinition;
@@ -404,6 +431,16 @@ public class MappingConfig {
     }
 
     /** Class to instantiate instead of {@code owner} (e.g. a class that became an interface), or null. */
+    /** Whether a call of constructor {@code owner(desc)} drops its first argument (the descriptor has exactly two, of one slot each). */
+    public boolean dropsFirstConstructorArgument(String owner, String desc) {
+        return constructorDrops.contains(owner + "." + desc);
+    }
+
+    /** [target class, method name] for {@code instanceof type}, or null. */
+    public String[] findInstanceofRedirect(String type) {
+        return instanceofRedirects.get(type);
+    }
+
     public String findNewRedirect(String owner) {
         return newRedirects.get(owner);
     }
@@ -412,7 +449,8 @@ public class MappingConfig {
         return fieldRedirects.get(owner + "." + name);
     }
 
-    public record Redirect(String owner, String name, String desc, boolean anyOwner, String target, String targetName) {}
+    /** {@code targetDesc}: the target's descriptor when it differs from the call's (e.g. a wider return type); null if the same. */
+    public record Redirect(String owner, String name, String desc, boolean anyOwner, String target, String targetName, String targetDesc) {}
 
     public record PackageRule(String from, String to) {}
 
