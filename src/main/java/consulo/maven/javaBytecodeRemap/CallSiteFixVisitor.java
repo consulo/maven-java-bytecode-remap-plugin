@@ -9,6 +9,7 @@ import org.objectweb.asm.*;
  * Fixes call sites after remapping:
  * - Field type overrides (visitFieldInsn descriptor fix)
  * - Class-to-interface transitions (invokestatic on class → invokestatic on interface)
+ * - Owner kind changes found on the classpath: invokevirtual on an interface → invokeinterface, and back
  * - Call redirects: calls and static field reads rewritten to static helpers
  * - Instantiation redirects: {@code new Owner(...)} becomes {@code new Target(...)} (same constructor descriptor)
  *
@@ -17,11 +18,17 @@ import org.objectweb.asm.*;
 public class CallSiteFixVisitor extends ClassVisitor {
     private final MappingConfig config;
     private final ConfigBasedRemapper remapper;
+    private final ClassKindIndex kinds;
 
     public CallSiteFixVisitor(ClassVisitor delegate, MappingConfig config, ConfigBasedRemapper remapper) {
+        this(delegate, config, remapper, null);
+    }
+
+    public CallSiteFixVisitor(ClassVisitor delegate, MappingConfig config, ConfigBasedRemapper remapper, ClassKindIndex kinds) {
         super(Opcodes.ASM9, delegate);
         this.config = config;
         this.remapper = remapper;
+        this.kinds = kinds;
     }
 
     @Override
@@ -97,6 +104,18 @@ public class CallSiteFixVisitor extends ClassVisitor {
                     opcode = Opcodes.INVOKEINTERFACE;
                 }
                 // invokestatic on interface is valid as-is (Java 8+ static interface methods)
+            }
+            else if (kinds != null && opcode != Opcodes.INVOKESPECIAL && !owner.startsWith("[")) {
+                Boolean ownerIsInterface = kinds.isInterface(owner);
+                if (ownerIsInterface != null && ownerIsInterface != isInterface) {
+                    isInterface = ownerIsInterface;
+                    if (opcode == Opcodes.INVOKEVIRTUAL && ownerIsInterface) {
+                        opcode = Opcodes.INVOKEINTERFACE;
+                    }
+                    else if (opcode == Opcodes.INVOKEINTERFACE && !ownerIsInterface) {
+                        opcode = Opcodes.INVOKEVIRTUAL;
+                    }
+                }
             }
             super.visitMethodInsn(opcode, owner, name, descriptor, isInterface);
         }

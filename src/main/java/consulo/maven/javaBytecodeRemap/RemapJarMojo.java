@@ -4,6 +4,7 @@ import org.apache.maven.plugin.AbstractMojo;
 import org.apache.maven.plugin.MojoExecutionException;
 import org.apache.maven.plugins.annotations.Mojo;
 import org.apache.maven.plugins.annotations.Parameter;
+import org.apache.maven.plugins.annotations.ResolutionScope;
 import org.apache.maven.project.MavenProject;
 import org.objectweb.asm.ClassReader;
 import org.objectweb.asm.ClassVisitor;
@@ -32,7 +33,7 @@ import java.util.jar.*;
  * &lt;/execution&gt;
  * </pre>
  */
-@Mojo(name = "remap-jar")
+@Mojo(name = "remap-jar", requiresDependencyResolution = ResolutionScope.COMPILE)
 public class RemapJarMojo extends AbstractMojo {
 
     @Parameter(defaultValue = "${project}", readonly = true)
@@ -61,7 +62,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 7;
+    private static final int CACHE_VERSION = 8;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -132,6 +133,16 @@ public class RemapJarMojo extends AbstractMojo {
                     }
                 }
             }
+
+            // Kinds of call owners: the remapped classes and the dependency classpath (e.g. the platform)
+            List<File> classpath = new ArrayList<>();
+            for (Object obj : project.getArtifacts()) {
+                File file = ((org.apache.maven.artifact.Artifact) obj).getFile();
+                if (file != null) {
+                    classpath.add(file);
+                }
+            }
+            kinds = new ClassKindIndex(allClassBytes, config::remapClass, classpath);
 
             // Pass 2: Remap and write
             Set<String> writtenEntries = new HashSet<>();
@@ -214,6 +225,8 @@ public class RemapJarMojo extends AbstractMojo {
                 }
             }
 
+            kinds.close();
+
             // Replace original with remapped
             Files.move(tempJar.toPath(), jar.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
@@ -228,6 +241,9 @@ public class RemapJarMojo extends AbstractMojo {
             throw new MojoExecutionException("Remap-jar failed", e);
         }
     }
+
+    /** Interface or class, for call sites whose owner changed kind */
+    private ClassKindIndex kinds;
 
     /** All class bytes for hierarchy resolution during frame computation */
     private Map<String, byte[]> allClassBytes = new HashMap<>();
@@ -254,7 +270,7 @@ public class RemapJarMojo extends AbstractMojo {
         ClassVisitor visitor = writer;
 
         // 3. Fix call sites (field descriptors, class-to-interface transitions)
-        visitor = new CallSiteFixVisitor(visitor, config, remapper);
+        visitor = new CallSiteFixVisitor(visitor, config, remapper, kinds);
 
         // 2. Remap all class/method/field references
         visitor = new ClassRemapper(visitor, remapper);
