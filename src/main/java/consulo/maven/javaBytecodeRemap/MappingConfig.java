@@ -323,6 +323,9 @@ public class MappingConfig {
      * Returns the new name or the original if no rename applies.
      */
     public ModuleDefinition getModuleDefinition() {
+        if (moduleDefinition != null) {
+            moduleDefinition.assignBindingClasses();
+        }
         return moduleDefinition;
     }
 
@@ -529,6 +532,32 @@ public class MappingConfig {
         public final List<String> requires = new ArrayList<>();
         public final List<String> exports = new ArrayList<>();
         public final List<ServiceProvision> provides = new ArrayList<>();
+
+        /**
+         * Names the generated binding classes: {@code Impl_Binding}, and {@code Impl_Api_Binding} for further bindings
+         * of the same implementation (e.g. a class that is two extensions).
+         */
+        void assignBindingClasses() {
+            Set<String> named = new HashSet<>();
+            for (ServiceProvision provision : provides) {
+                for (BindingDeclaration binding : provision.bindings) {
+                    if (binding.bindingClass != null) {
+                        named.add(binding.bindingClass);
+                        continue;
+                    }
+                    if ("topicBinding".equals(binding.type)) {
+                        binding.bindingClass = binding.apiClass + "_Binding";
+                        continue;
+                    }
+                    String name = binding.implClass + "_Binding";
+                    if (!named.add(name)) {
+                        name = binding.implClass + "_" + binding.apiClass.substring(binding.apiClass.lastIndexOf('/') + 1) + "_Binding";
+                        named.add(name);
+                    }
+                    binding.bindingClass = name;
+                }
+            }
+        }
     }
 
     public static class ServiceProvision {
@@ -546,5 +575,6 @@ public class MappingConfig {
         public String apiClass;
         public String scope; // APPLICATION, PROJECT, etc.
         public String type; // extension (default), service, topic, topicBinding (a TopicBinding of the api)
+        public String bindingClass; // the generated class (see ModuleDefinition.assignBindingClasses)
     }
 }

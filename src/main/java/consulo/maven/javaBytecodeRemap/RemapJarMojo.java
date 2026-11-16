@@ -62,7 +62,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 14;
+    private static final int CACHE_VERSION = 15;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -180,7 +180,7 @@ public class RemapJarMojo extends AbstractMojo {
                     for (MappingConfig.ServiceProvision sp : moduleDef.provides) {
                         // Generate _Binding classes
                         for (MappingConfig.BindingDeclaration bd : sp.bindings) {
-                            String bindingClass = bd.implClass + "_Binding";
+                            String bindingClass = bd.bindingClass;
                             String bindingEntry = bindingClass + ".class";
                             if (!writtenEntries.add(bindingEntry)) continue;
                             if ("topicBinding".equals(bd.type)) {
@@ -200,7 +200,7 @@ public class RemapJarMojo extends AbstractMojo {
                             }
                             byte[] implBytes = remappedClasses.get(bd.implClass + ".class");
                             String constructor = implBytes != null ? BindingGenerator.chooseConstructor(implBytes) : "()V";
-                            byte[] bindingBytes = BindingGenerator.generate(bd.implClass, bd.apiClass,
+                            byte[] bindingBytes = BindingGenerator.generate(bindingClass, bd.implClass, bd.apiClass,
                                 bd.scope != null ? bd.scope : "APPLICATION", bd.type, constructor);
                             jos.putNextEntry(new JarEntry(bindingEntry));
                             jos.write(bindingBytes);
@@ -214,7 +214,7 @@ public class RemapJarMojo extends AbstractMojo {
                             sb.append(impl.replace('/', '.')).append('\n');
                         }
                         for (MappingConfig.BindingDeclaration bd : sp.bindings) {
-                            sb.append((bd.implClass + "_Binding").replace('/', '.')).append('\n');
+                            sb.append(bd.bindingClass.replace('/', '.')).append('\n');
                         }
                         String servicesPath = "META-INF/services/" + sp.interfaceName.replace('/', '.');
                         if (!writtenEntries.add(servicesPath)) continue;

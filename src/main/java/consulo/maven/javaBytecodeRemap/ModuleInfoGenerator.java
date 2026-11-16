@@ -53,7 +53,7 @@ public class ModuleInfoGenerator {
                 impls[i++] = impl;
             }
             for (MappingConfig.BindingDeclaration bd : sp.bindings) {
-                impls[i++] = bd.implClass + "_Binding";
+                impls[i++] = bd.bindingClass;
             }
             mv.visitProvide(sp.interfaceName, impls);
         }

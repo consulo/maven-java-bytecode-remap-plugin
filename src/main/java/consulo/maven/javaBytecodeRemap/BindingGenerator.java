@@ -19,7 +19,7 @@ public class BindingGenerator {
      * @return bytecode of the generated _Binding class
      */
     public static byte[] generate(String implClass, String apiClass, String scope) {
-        return generate(implClass, apiClass, scope, null, "()V");
+        return generate(implClass + "_Binding", implClass, apiClass, scope, null, "()V");
     }
 
     /**
@@ -41,14 +41,13 @@ public class BindingGenerator {
         return best[0] != null ? best[0] : "()V";
     }
 
-    public static byte[] generate(String implClass, String apiClass, String scope, String type, String constructor) {
+    public static byte[] generate(String bindingClass, String implClass, String apiClass, String scope, String type, String constructor) {
         Type[] parameters = Type.getArgumentTypes(constructor);
         String annotationClass = switch (type == null ? "extension" : type) {
             case "service" -> "consulo/annotation/component/ServiceAPI";
             case "topic" -> "consulo/annotation/component/TopicAPI";
             default -> "consulo/annotation/component/ExtensionAPI";
         };
-        String bindingClass = implClass + "_Binding";
         String scopeField = scope != null ? scope : "APPLICATION";
 
         ClassWriter cw = new ClassWriter(ClassWriter.COMPUTE_FRAMES);
