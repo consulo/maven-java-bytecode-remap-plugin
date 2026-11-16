@@ -14,6 +14,7 @@ import org.objectweb.asm.*;
  * - Instantiation redirects: {@code new Owner(...)} becomes {@code new Target(...)} (same constructor descriptor)
  * - instanceof redirects: {@code instanceof T} becomes a static boolean check
  * - constructors without their first argument: {@code new T(a, b)} / {@code super(a, b)} becomes {@code T(b)}
+ * - constructors replaced by factories: {@code new T(a)} becomes {@code Factory.create(a)}
  *
  * Must run AFTER ClassRemapper (operates on remapped names).
  */
@@ -45,6 +46,8 @@ public class CallSiteFixVisitor extends ClassVisitor {
     private class CallSiteFixMethodVisitor extends MethodVisitor {
         /** Redirected NEWs whose constructor call has not been seen yet, per owner (innermost last). */
         private final Map<String, Integer> pendingNews = new HashMap<>();
+        /** NEWs of classes with constructor factories whose constructor call has not been seen yet, per owner. */
+        private final Map<String, Integer> pendingFactoryNews = new HashMap<>();
 
         CallSiteFixMethodVisitor(MethodVisitor delegate) {
             super(Opcodes.ASM9, delegate);
@@ -58,6 +61,9 @@ public class CallSiteFixVisitor extends ClassVisitor {
                     super.visitMethodInsn(Opcodes.INVOKESTATIC, check[0], check[1], "(Ljava/lang/Object;)Z", false);
                     return;
                 }
+            }
+            if (opcode == Opcodes.NEW && config.hasNewFactory(type)) {
+                pendingFactoryNews.merge(type, 1, Integer::sum);
             }
             if (opcode == Opcodes.NEW) {
                 String target = config.findNewRedirect(type);
@@ -89,11 +95,28 @@ public class CallSiteFixVisitor extends ClassVisitor {
 
         @Override
         public void visitMethodInsn(int opcode, String owner, String name, String descriptor, boolean isInterface) {
+            String retyped = config.findRetype(owner, name, descriptor);
+            if (retyped != null) {
+                descriptor = retyped;
+            }
             // only constructor calls that belong to a redirected NEW (not super() calls of subclasses)
             if (opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name) && pendingNews.getOrDefault(owner, 0) > 0) {
                 pendingNews.merge(owner, -1, Integer::sum);
                 super.visitMethodInsn(opcode, config.findNewRedirect(owner), name, descriptor, false);
                 return;
+            }
+            if (opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name) && pendingFactoryNews.getOrDefault(owner, 0) > 0) {
+                pendingFactoryNews.merge(owner, -1, Integer::sum);
+                String[] factory = config.findNewFactory(owner, descriptor);
+                if (factory != null) {
+                    // stack: uninitialized, uninitialized (NEW, DUP), arguments -> the factory's result under nothing
+                    super.visitMethodInsn(Opcodes.INVOKESTATIC, factory[0], factory[1],
+                        descriptor.substring(0, descriptor.length() - 1) + "L" + owner + ";", false);
+                    super.visitInsn(Opcodes.DUP_X2);
+                    super.visitInsn(Opcodes.POP);
+                    super.visitInsn(Opcodes.POP2);
+                    return;
+                }
             }
             if (opcode == Opcodes.INVOKESPECIAL && "<init>".equals(name) && config.dropsFirstConstructorArgument(owner, descriptor)) {
                 Type[] arguments = Type.getArgumentTypes(descriptor);

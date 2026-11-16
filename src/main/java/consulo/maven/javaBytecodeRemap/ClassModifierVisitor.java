@@ -23,7 +23,19 @@ public class ClassModifierVisitor extends ClassVisitor {
     @Override
     public void visit(int version, int access, String name, String signature, String superName, String[] interfaces) {
         this.className = name;
-        super.visit(version, access, name, signature, superName, interfaces);
+        java.util.List<String> all = new java.util.ArrayList<>(interfaces == null ? List.of() : List.of(interfaces));
+        StringBuilder genericSignature = signature == null ? null : new StringBuilder(signature);
+        for (String itf : mod.interfaces) {
+            String mapped = remapper.map(itf);
+            if (!all.contains(mapped)) {
+                all.add(mapped);
+                if (genericSignature != null) {
+                    genericSignature.append('L').append(mapped).append(';');
+                }
+            }
+        }
+        super.visit(version, access, name, genericSignature == null ? null : genericSignature.toString(), superName,
+            all.toArray(new String[0]));
     }
 
     @Override
@@ -263,6 +275,7 @@ public class ClassModifierVisitor extends ClassVisitor {
                 mv.visitFieldInsn(Opcodes.PUTSTATIC, owner, name, "L" + type + ";");
             }
             case "areturn" -> mv.visitInsn(Opcodes.ARETURN);
+            case "ireturn" -> mv.visitInsn(Opcodes.IRETURN);
             case "return" -> mv.visitInsn(Opcodes.RETURN);
             case "aconst_null" -> mv.visitInsn(Opcodes.ACONST_NULL);
             case "checkcast" -> mv.visitTypeInsn(Opcodes.CHECKCAST, remapper.map(insn.args[0]));

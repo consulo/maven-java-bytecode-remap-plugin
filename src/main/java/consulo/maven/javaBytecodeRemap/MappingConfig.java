@@ -37,6 +37,13 @@ public class MappingConfig {
 
     /** Instantiations redirected to another class: owner → replacement (both remapped internal names). */
     private final Map<String, String> newRedirects = new HashMap<>();
+
+    /** Calls whose descriptor becomes another (a supertype of an argument): "owner.name(desc)" -> new descriptor. */
+    private final Map<String, String> retypes = new HashMap<>();
+
+    /** Constructors replaced by static factories: "owner.(desc)V" -> {target, name}; for a final class without the constructor. */
+    private final Map<String, String[]> newFactories = new HashMap<>();
+    private final java.util.Set<String> newFactoryOwners = new java.util.HashSet<>();
     private final Map<String, String[]> instanceofRedirects = new HashMap<>();
     private final Set<String> constructorDrops = new HashSet<>();
 
@@ -129,6 +136,20 @@ public class MappingConfig {
             for (Element r : redirects.getChildren("dropFirstConstructorArgument")) {
                 config.constructorDrops.add(r.getAttributeValue("owner").replace('.', '/') + "." + r.getAttributeValue("desc"));
             }
+            // <retype owner="pkg.Owner" name="m" desc="(Lpkg/Sub;)V" newDesc="(Lpkg/Super;)V"/>: any call keeps its owner and
+            // opcode, e.g. a super call whose argument type maps to a subtype of the parameter's
+            for (Element r : redirects.getChildren("retype")) {
+                config.retypes.put(r.getAttributeValue("owner").replace('.', '/') + "." + r.getAttributeValue("name") + r.getAttributeValue("desc"),
+                    r.getAttributeValue("newDesc"));
+            }
+            // <newFactory owner="pkg.Final" desc="(Ljava/util/function/Supplier;)V" target="pkg.Compat" name="create"/>:
+            // new Final(supplier) becomes Compat.create(supplier), which returns a Final
+            for (Element r : redirects.getChildren("newFactory")) {
+                String owner = r.getAttributeValue("owner").replace('.', '/');
+                config.newFactories.put(owner + "." + r.getAttributeValue("desc"),
+                    new String[]{r.getAttributeValue("target").replace('.', '/'), r.getAttributeValue("name")});
+                config.newFactoryOwners.add(owner);
+            }
             for (Element r : redirects.getChildren("new")) {
                 config.newRedirects.put(r.getAttributeValue("owner").replace('.', '/'), r.getAttributeValue("target").replace('.', '/'));
             }
@@ -139,12 +160,17 @@ public class MappingConfig {
         if (mods != null) {
             for (Element classEl : mods.getChildren("class")) {
                 String className = classEl.getAttributeValue("name").replace('.', '/');
-                ClassModification mod = new ClassModification(className);
+                // several <class> entries of one class add up (e.g. a generated extension binding and a hand-written bridge)
+                ClassModification mod = config.modifications.computeIfAbsent(className, ClassModification::new);
 
                 for (Element rft : classEl.getChildren("replaceFieldType")) {
                     mod.fieldTypeReplacements.put(
                         rft.getAttributeValue("name"),
                         rft.getAttributeValue("type").replace('.', '/'));
+                }
+
+                for (Element itf : classEl.getChildren("addInterface")) {
+                    mod.interfaces.add(itf.getAttributeValue("type").replace('.', '/'));
                 }
 
                 for (Element ann : classEl.getChildren("addAnnotation")) {
@@ -222,7 +248,6 @@ public class MappingConfig {
                     config.fieldTypeOverrides.put(className + "." + entry.getKey(), entry.getValue());
                 }
 
-                config.modifications.put(className, mod);
             }
         }
 
@@ -381,6 +406,7 @@ public class MappingConfig {
                     insn.getAttributeValue("name"),
                     insn.getAttributeValue("type").replace('.', '/')));
                 case "areturn" -> out.add(new Instruction("areturn"));
+                case "ireturn" -> out.add(new Instruction("ireturn"));
                 case "return" -> out.add(new Instruction("return"));
                 case "aconst_null" -> out.add(new Instruction("aconst_null"));
                 case "checkcast" -> out.add(new Instruction("checkcast",
@@ -416,6 +442,9 @@ public class MappingConfig {
         other.methodRedirects.forEach((key, list) -> methodRedirects.computeIfAbsent(key, k -> new ArrayList<>()).addAll(0, list));
         fieldRedirects.putAll(other.fieldRedirects);
         newRedirects.putAll(other.newRedirects);
+        newFactories.putAll(other.newFactories);
+        retypes.putAll(other.retypes);
+        newFactoryOwners.addAll(other.newFactoryOwners);
         instanceofRedirects.putAll(other.instanceofRedirects);
         constructorDrops.addAll(other.constructorDrops);
         verbatim.addAll(other.verbatim);
@@ -469,6 +498,19 @@ public class MappingConfig {
         return instanceofRedirects.get(type);
     }
 
+    public String findRetype(String owner, String name, String desc) {
+        return retypes.get(owner + "." + name + desc);
+    }
+
+    public boolean hasNewFactory(String owner) {
+        return newFactoryOwners.contains(owner);
+    }
+
+    /** {target, name} of the factory replacing the constructor, or null */
+    public String[] findNewFactory(String owner, String constructorDesc) {
+        return newFactories.get(owner + "." + constructorDesc);
+    }
+
     public String findNewRedirect(String owner) {
         return newRedirects.get(owner);
     }
@@ -486,6 +528,8 @@ public class MappingConfig {
         public final String className;
         public final Map<String, String> fieldTypeReplacements = new HashMap<>(); // fieldName → newType
         public final List<String> annotations = new ArrayList<>();
+        /** Interfaces to implement, e.g. a Consulo extension API whose methods the class already has. */
+        public final List<String> interfaces = new ArrayList<>();
         /** Enum elements of added annotations: annotation type -> [name, enum type, constant]. */
         public final Map<String, List<String[]>> annotationEnums = new HashMap<>();
         public final List<MethodToAdd> methods = new ArrayList<>();
