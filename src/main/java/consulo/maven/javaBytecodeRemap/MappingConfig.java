@@ -17,7 +17,7 @@ public class MappingConfig {
     /** Per-class overrides: com/intellij/psi/FileViewProvider → consulo/language/file/FileViewProvider */
     private final Map<String, String> classRules = new HashMap<>();
 
-    /** Method renames: "owner.methodName" → "newMethodName" */
+    /** Method renames: "owner.methodName" (or "owner.methodName(desc)ret" for one descriptor) → "newMethodName" */
     private final Map<String, String> methodRenames = new HashMap<>();
 
     /** Field type overrides: "owner.fieldName" → new type (internal name) */
@@ -89,7 +89,9 @@ public class MappingConfig {
                 String owner = rule.getAttributeValue("owner").replace('.', '/');
                 String name = rule.getAttributeValue("name");
                 String newName = rule.getAttributeValue("newName");
-                config.methodRenames.put(owner + "." + name, newName);
+                // desc (remapped names): only the method with this descriptor, e.g. one of two that differ in return type
+                String desc = rule.getAttributeValue("desc");
+                config.methodRenames.put(owner + "." + name + (desc != null ? desc : ""), newName);
             }
         }
 
@@ -340,21 +342,25 @@ public class MappingConfig {
         return classToInterface.contains(internalName);
     }
 
-    /** Rename rules for a method name: rule owner -> new name. */
-    public Map<String, String> methodRenamesByName(String name) {
+    /** Rename rules for a method name and (remapped) descriptor: rule owner -> new name. */
+    public Map<String, String> methodRenamesByName(String name, String desc) {
         Map<String, String> result = new HashMap<>();
         String suffix = "." + name;
+        String descSuffix = suffix + desc;
         methodRenames.forEach((key, newName) -> {
-            if (key.endsWith(suffix)) {
-                result.put(key.substring(0, key.length() - suffix.length()), newName);
+            if (key.endsWith(descSuffix)) {
+                result.put(key.substring(0, key.length() - descSuffix.length()), newName);
+            }
+            else if (key.endsWith(suffix)) {
+                result.putIfAbsent(key.substring(0, key.length() - suffix.length()), newName);
             }
         });
         return result;
     }
 
-    public String remapMethodName(String owner, String name) {
-        String key = owner + "." + name;
-        return methodRenames.getOrDefault(key, name);
+    public String remapMethodName(String owner, String name, String desc) {
+        String renamed = methodRenames.get(owner + "." + name + desc);
+        return renamed != null ? renamed : methodRenames.getOrDefault(owner + "." + name, name);
     }
 
     /**

@@ -28,12 +28,13 @@ public class ConfigBasedRemapper extends Remapper {
     public String mapMethodName(String owner, String name, String descriptor) {
         // Use the already-remapped owner name for lookup
         String remappedOwner = map(owner);
-        String renamed = config.remapMethodName(remappedOwner, name);
+        String remappedDesc = mapMethodDesc(descriptor);
+        String renamed = config.remapMethodName(remappedOwner, name, remappedDesc);
         if (!renamed.equals(name) || kinds == null) {
             return renamed;
         }
         // an override (or a call through a subtype) of a renamed method: e.g. getHashCode of a KeyDescriptor implementation
-        for (java.util.Map.Entry<String, String> rule : config.methodRenamesByName(name).entrySet()) {
+        for (java.util.Map.Entry<String, String> rule : config.methodRenamesByName(name, remappedDesc).entrySet()) {
             if (Boolean.TRUE.equals(kinds.isSubtype(remappedOwner, rule.getKey()))) {
                 return rule.getValue();
             }
