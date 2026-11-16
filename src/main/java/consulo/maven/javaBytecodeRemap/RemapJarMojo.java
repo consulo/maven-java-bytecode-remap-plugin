@@ -62,7 +62,7 @@ public class RemapJarMojo extends AbstractMojo {
     private String[] excludeResources;
 
     /** Increment when plugin logic changes to invalidate cache */
-    private static final int CACHE_VERSION = 21;
+    private static final int CACHE_VERSION = 22;
 
     @Override
     public void execute() throws MojoExecutionException {
@@ -285,6 +285,11 @@ public class RemapJarMojo extends AbstractMojo {
 
         // Pipeline: modifications → remapper → call site fix → writer
         ClassVisitor visitor = writer;
+
+        // 4. Bridge methods for subtypes of APIs whose result types differ
+        if (!config.getBridges().isEmpty()) {
+            visitor = new BridgeVisitor(visitor, config.getBridges(), kinds);
+        }
 
         // 3. Fix call sites (field descriptors, class-to-interface transitions)
         visitor = new CallSiteFixVisitor(visitor, config, remapper, kinds);

@@ -38,6 +38,9 @@ public class MappingConfig {
     /** Instantiations redirected to another class: owner → replacement (both remapped internal names). */
     private final Map<String, String> newRedirects = new HashMap<>();
 
+    /** Bridge methods added to the subtypes of an owner (see {@link BridgeVisitor}). */
+    private final List<Bridge> bridges = new ArrayList<>();
+
     /** Calls whose descriptor becomes another (a supertype of an argument): "owner.name(desc)" -> new descriptor. */
     private final Map<String, String> retypes = new HashMap<>();
 
@@ -135,6 +138,20 @@ public class MappingConfig {
             // a constructor the target lacks, whose first argument it does without: owner(A, B) -> owner(B)
             for (Element r : redirects.getChildren("dropFirstConstructorArgument")) {
                 config.constructorDrops.add(r.getAttributeValue("owner").replace('.', '/') + "." + r.getAttributeValue("desc"));
+            }
+            // <bridge owner="pkg.Api" name="m" desc="()Lpkg/New;" adapter="pkg.Compat" adapterName="convert">
+            //   <source name="m" desc="()Lpkg/Old;"/>...</bridge> (remapped names): subtypes of Api that declare a source get m
+            for (Element r : redirects.getChildren("bridge")) {
+                List<String[]> sources = new ArrayList<>();
+                for (Element source : r.getChildren("source")) {
+                    sources.add(new String[]{source.getAttributeValue("name"), source.getAttributeValue("desc")});
+                }
+                List<String> except = new ArrayList<>();
+                for (Element e : r.getChildren("except")) {
+                    except.add(e.getAttributeValue("owner").replace('.', '/'));
+                }
+                config.bridges.add(new Bridge(r.getAttributeValue("owner").replace('.', '/'), r.getAttributeValue("name"),
+                    r.getAttributeValue("desc"), r.getAttributeValue("adapter").replace('.', '/'), r.getAttributeValue("adapterName"), sources, except));
             }
             // <retype owner="pkg.Owner" name="m" desc="(Lpkg/Sub;)V" newDesc="(Lpkg/Super;)V"/>: any call keeps its owner and
             // opcode, e.g. a super call whose argument type maps to a subtype of the parameter's
@@ -444,6 +461,7 @@ public class MappingConfig {
         newRedirects.putAll(other.newRedirects);
         newFactories.putAll(other.newFactories);
         retypes.putAll(other.retypes);
+        bridges.addAll(other.bridges);
         newFactoryOwners.addAll(other.newFactoryOwners);
         instanceofRedirects.putAll(other.instanceofRedirects);
         constructorDrops.addAll(other.constructorDrops);
@@ -498,6 +516,10 @@ public class MappingConfig {
         return instanceofRedirects.get(type);
     }
 
+    public List<Bridge> getBridges() {
+        return bridges;
+    }
+
     public String findRetype(String owner, String name, String desc) {
         return retypes.get(owner + "." + name + desc);
     }
@@ -523,6 +545,9 @@ public class MappingConfig {
     public record Redirect(String owner, String name, String desc, boolean anyOwner, String target, String targetName, String targetDesc) {}
 
     public record PackageRule(String from, String to) {}
+
+    /** {@code sources}: {name, desc} pairs, tried in order; {@code except}: subtypes of these get no bridge (e.g. a final target) */
+    public record Bridge(String owner, String name, String desc, String adapter, String adapterName, List<String[]> sources, List<String> except) {}
 
     public static class ClassModification {
         public final String className;
